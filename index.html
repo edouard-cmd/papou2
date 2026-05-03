@@ -411,12 +411,15 @@
     border: 0.5px solid rgba(255,255,255,0.15);
     font-size: 12px; opacity: 0.9;
   }
+  .camera-status.hidden { display: none; }
 
   .camera-error {
     position: absolute; inset: 0; background: #1a1a18;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     padding: 24px; text-align: center; color: white;
+    z-index: 10;
   }
+  .camera-error.hidden { display: none; }
   .camera-error h3 { margin: 0 0 12px; font-size: 18px; font-weight: 500; }
   .camera-error p { font-size: 14px; opacity: 0.75; line-height: 1.6; max-width: 320px; margin: 0 0 20px; }
 
@@ -705,7 +708,7 @@
   <div id="camera-error" class="camera-error hidden">
     <h3 id="camera-error-title">Caméra indisponible</h3>
     <p id="camera-error-msg">—</p>
-    <button class="primary" onclick="closeCamera()" style="max-width: 240px;">Retour</button>
+    <button onclick="closeCamera()" style="background: white; color: black; border: none; padding: 14px 32px; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; font-family: inherit;">Retour</button>
   </div>
 </div>
 
@@ -960,6 +963,7 @@ const camera = {
   currentBeta: null,    // dernière valeur d'inclinaison (en degrés, 0 = horizontal, 90 = vertical)
   betaHistory: [],      // historique court pour évaluer la stabilité
   active: false,
+  errored: false,       // true si une erreur a été affichée (empêche les statuts résiduels)
 };
 
 const SAFETY_KEY = 'sunfix_safety_ack_v1';
@@ -997,30 +1001,31 @@ async function startCameraFlow() {
   const screen = document.getElementById('camera-screen');
   screen.classList.remove('hidden');
   document.getElementById('camera-error').classList.add('hidden');
-  showCameraStatus("Initialisation…");
+  camera.errored = false;
   camera.active = true;
+  showCameraStatus("Initialisation…");
 
-  // 1. Demander permission DeviceOrientation (iOS 13+ exige requestPermission)
-  let orientGranted = true;
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const result = await DeviceOrientationEvent.requestPermission();
-      orientGranted = (result === 'granted');
-    } catch (e) {
-      orientGranted = false;
-    }
-  }
-
-  if (!orientGranted) {
+  // Vérification HTTPS (caméra et capteurs nécessitent un contexte sécurisé)
+  if (!window.isSecureContext) {
     showCameraError(
-      "Capteurs non autorisés",
-      "L'app a besoin d'accéder à l'inclinomètre pour mesurer l'angle. Autorise les capteurs dans les réglages de ton navigateur, ou utilise un autre appareil."
+      "Contexte non sécurisé",
+      "L'app doit être servie en HTTPS pour accéder à la caméra et aux capteurs. Ouvre l'URL en https:// ou utilise localhost."
     );
     return;
   }
 
-  // 2. Démarrer le flux caméra (caméra arrière idéalement)
+  // Vérification de la disponibilité de getUserMedia
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showCameraError(
+      "Caméra non supportée",
+      "Ton navigateur ne permet pas l'accès à la caméra. Essaie avec Safari (iPhone) ou Chrome (Android) à jour."
+    );
+    return;
+  }
+
+  // 1. Démarrer le flux caméra EN PREMIER
+  // (sur iOS, le premier appel async qui demande une permission consomme le geste utilisateur,
+  // donc on commence par la caméra qui est l'essentiel visuel)
   try {
     const constraints = {
       video: {
@@ -1035,10 +1040,51 @@ async function startCameraFlow() {
     video.srcObject = camera.stream;
   } catch (e) {
     let msg = "Impossible d'accéder à la caméra.";
-    if (e.name === 'NotAllowedError') msg = "L'accès caméra a été refusé. Autorise-le dans les réglages du navigateur.";
-    else if (e.name === 'NotFoundError') msg = "Aucune caméra détectée sur cet appareil.";
-    else if (e.name === 'NotReadableError') msg = "La caméra est utilisée par une autre application.";
-    showCameraError("Caméra indisponible", msg);
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      msg = "L'accès caméra a été refusé. Va dans les réglages Safari (ou Chrome) → Caméra, et autorise SunFix. Recharge ensuite la page.";
+    } else if (e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError') {
+      msg = "Aucune caméra détectée sur cet appareil.";
+    } else if (e.name === 'NotReadableError' || e.name === 'TrackStartError') {
+      msg = "La caméra est utilisée par une autre application. Ferme-la et réessaie.";
+    } else if (e.name === 'OverconstrainedError') {
+      // Réessayer avec des contraintes minimales
+      try {
+        camera.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        document.getElementById('camera-video').srcObject = camera.stream;
+        // Si on arrive ici, c'est OK, on poursuit (pas de return)
+      } catch (e2) {
+        msg = "Configuration caméra non supportée (" + (e2.message || e.name) + ").";
+        showCameraError("Caméra indisponible", msg);
+        return;
+      }
+    } else {
+      msg = "Erreur caméra : " + (e.message || e.name);
+    }
+    if (!camera.stream) {
+      showCameraError("Caméra indisponible", msg);
+      return;
+    }
+  }
+
+  // 2. Demander permission DeviceOrientation (iOS 13+ exige requestPermission)
+  let orientGranted = true;
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const result = await DeviceOrientationEvent.requestPermission();
+      orientGranted = (result === 'granted');
+    } catch (e) {
+      // Sur iOS, requestPermission doit être appelé depuis un geste utilisateur direct.
+      // Si on arrive ici après getUserMedia, le geste peut être "consommé" sur certaines versions.
+      orientGranted = false;
+    }
+  }
+
+  if (!orientGranted) {
+    showCameraError(
+      "Capteurs non autorisés",
+      "L'app a besoin de l'inclinomètre du téléphone pour mesurer l'angle du soleil. Sur iOS, va dans Réglages → Safari → Mouvement et orientation → Activer, puis recharge la page."
+    );
     return;
   }
 
@@ -1073,7 +1119,7 @@ function startOrientationListener() {
 
   // Sécurité : si après 2 secondes aucune valeur n'est arrivée, on prévient
   setTimeout(() => {
-    if (camera.active && camera.currentBeta === null) {
+    if (camera.active && !camera.errored && camera.currentBeta === null) {
       showCameraStatus("En attente des capteurs… bouge légèrement le téléphone");
     }
   }, 2000);
@@ -1141,6 +1187,7 @@ function flashCapture() {
 
 function closeCamera() {
   camera.active = false;
+  camera.errored = false;
   // Stop stream
   if (camera.stream) {
     camera.stream.getTracks().forEach(t => t.stop());
@@ -1155,7 +1202,8 @@ function closeCamera() {
   }
   camera.currentBeta = null;
   camera.betaHistory = [];
-  // Hide screen
+  // Hide screen + masque la status pill et l'erreur
+  hideCameraStatus();
   document.getElementById('camera-screen').classList.add('hidden');
   document.getElementById('camera-error').classList.add('hidden');
   // Refresh dashboard
@@ -1165,21 +1213,27 @@ function closeCamera() {
 function showCameraStatus(msg) {
   const el = document.getElementById('camera-status');
   if (!el) return;
+  // Si on est déjà en erreur, on ne réaffiche aucun statut
+  if (camera.errored) return;
   el.textContent = msg;
   el.classList.remove('hidden');
-  // Auto-hide après 3s
   clearTimeout(showCameraStatus._t);
   showCameraStatus._t = setTimeout(() => el.classList.add('hidden'), 3000);
 }
 function hideCameraStatus() {
   const el = document.getElementById('camera-status');
   if (el) el.classList.add('hidden');
+  clearTimeout(showCameraStatus._t);
 }
 function showCameraError(title, msg) {
+  // Marque l'erreur pour empêcher tout statut résiduel
+  camera.errored = true;
+  // Annule tout timer de statut en cours
+  hideCameraStatus();
+  // Affiche le panneau d'erreur (au-dessus de tout, z-index: 10)
   document.getElementById('camera-error-title').textContent = title;
   document.getElementById('camera-error-msg').textContent = msg;
   document.getElementById('camera-error').classList.remove('hidden');
-  hideCameraStatus();
 }
 
 function computeFix() {
