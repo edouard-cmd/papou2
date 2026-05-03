@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>SunFix — position par le soleil</title>
+<title>Papousextant — position par le soleil</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
   :root {
     --bg: #F1EFE8;
@@ -182,10 +184,23 @@
 
   /* Carte */
   .map-container {
-    position: relative; height: 240px; background: var(--surface-2);
+    position: relative; height: 280px; background: var(--surface-2);
     border-radius: 10px; overflow: hidden; margin: 16px 0;
   }
-  .map-container svg { display: block; width: 100%; height: 100%; }
+  .map-container > #result-map { width: 100%; height: 100%; }
+  /* Style des popups Leaflet pour rester cohérent avec l'app */
+  .leaflet-popup-content-wrapper {
+    border-radius: var(--border-radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .leaflet-popup-tip { background: var(--surface); }
+  .leaflet-control-attribution {
+    font-size: 10px;
+    background: rgba(255,255,255,0.7);
+  }
 
   /* Détail corrections */
   .correction-row {
@@ -471,7 +486,7 @@
   <!-- ─── ÉCRAN INTRO ─── -->
   <div id="screen-intro" class="screen">
     <div class="intro">
-      <h2>SunFix</h2>
+      <h2>Papousextant</h2>
       <p>Calcule ta position sur Terre à partir de visées du soleil. Sans GPS, sans réseau.</p>
 
       <div class="feature">
@@ -612,7 +627,7 @@
     </div>
 
     <div class="map-container">
-      <svg id="result-map" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="result-map"></div>
     </div>
 
     <div class="stats">
@@ -656,7 +671,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="#BA7517" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
     </div>
     <h3>Sécurité oculaire</h3>
-    <p>SunFix utilise la caméra de ton téléphone pour pointer le soleil. Avant de continuer, lis attentivement.</p>
+    <p>Papousextant utilise la caméra de ton téléphone pour pointer le soleil. Avant de continuer, lis attentivement.</p>
     <div class="key">
       <strong>Ne regarde JAMAIS le soleil directement à l'œil nu.</strong> Ne le regarde pas non plus à travers un viseur optique. Pour aligner le téléphone, ne regarde QUE l'écran — jamais le soleil derrière le téléphone.
     </div>
@@ -722,7 +737,7 @@
 </div>
 
 <div class="footer-note">
-  SunFix · prototype de navigation astronomique · réfraction calculée en atmosphère standard
+  Papousextant · prototype de navigation astronomique · réfraction calculée en atmosphère standard
 </div>
 
 <script>
@@ -788,7 +803,18 @@ function correctAltitude(Hs, IC_min, eye_m, limb) {
 }
 
 function multiSightFix(sights, lat0, lon0, maxIter = 15) {
+  // Garde-fous d'entrée
+  if (!Array.isArray(sights) || sights.length < 2) {
+    return { error: "Au moins 2 visées sont nécessaires." };
+  }
+  if (!isFinite(lat0) || !isFinite(lon0)) {
+    return { error: "Position d'estime invalide." };
+  }
+
   let lat = lat0, lon = lon0;
+  let lastDet = null;
+  let lastAA = null; // pour la matrice de covariance finale
+
   for (let iter = 0; iter < maxIter; iter++) {
     const A = [], b = [];
     for (const s of sights) {
@@ -803,11 +829,37 @@ function multiSightFix(sights, lat0, lon0, maxIter = 15) {
       ab0 += A[i][0]*b[i]; ab1 += A[i][1]*b[i];
     }
     const det = aa00*aa11 - aa01*aa01;
-    if (Math.abs(det) < 1e-12) return { error: "Visées colinéaires — ajoute une visée à un autre azimut" };
+    lastDet = det; lastAA = { aa00, aa01, aa11 };
+
+    // Géométrie dégénérée : visées trop colinéaires (azimuts trop proches)
+    if (Math.abs(det) < 1e-10) {
+      return { error: "Visées trop semblables — espace-les dans le temps (≥10 min) pour que le soleil change d'azimut." };
+    }
+
     const dlat = (aa11*ab0 - aa01*ab1) / det;
     const dlon = (-aa01*ab0 + aa00*ab1) / det;
+
+    // Garde-fou sur la divergence
+    if (!isFinite(dlat) || !isFinite(dlon)) {
+      return { error: "Calcul instable — vérifie tes mesures et réessaie." };
+    }
+    // Si l'algorithme veut faire un saut énorme (>30° en lat ou lon), c'est qu'on diverge
+    if (Math.abs(dlat) > 30 || Math.abs(dlon) > 30) {
+      return { error: "Convergence impossible — vérifie ton point d'estime de départ et la qualité des visées." };
+    }
+
     lat += dlat; lon += dlon;
+
+    // Garde-fou physique : lat doit rester dans [-90, 90]
+    if (lat < -90 || lat > 90) {
+      return { error: "La position calculée sort des limites physiques. Vérifie l'heure UTC et tes mesures." };
+    }
+    // Normalisation longitude (si l'algo passe par ±180 c'est OK, on remet dans [-180, 180])
+    while (lon > 180) lon -= 360;
+    while (lon < -180) lon += 360;
+
     if (Math.abs(dlat) < 0.0001 && Math.abs(dlon) < 0.0001) {
+      // Convergence atteinte
       let rss = 0;
       for (const s of sights) {
         const { Hc } = calculatedAltitude(lat, lon, s.GHA, s.dec);
@@ -815,30 +867,31 @@ function multiSightFix(sights, lat0, lon0, maxIter = 15) {
         rss += r*r;
       }
       const n = sights.length;
-      // Sigma a posteriori (résidu RMS, en minutes d'arc = NM). Avec peu de visées
-      // ce résidu sous-estime la vraie incertitude — on plancher à un sigma minimal
-      // correspondant à l'incertitude de mesure typique (1.5' sur smartphone).
       const sigma_residual = n > 2 ? Math.sqrt(rss / (n - 2)) : 1.5;
-      const sigma_meas = Math.max(sigma_residual, 1.5); // floor à 1.5'
+      const sigma_meas = Math.max(sigma_residual, 1.5);
 
-      // Matrice de covariance ≈ sigma² × (AᵀA)⁻¹
-      // En degrés² :
-      const inv00 = aa11 / det;
-      const inv11 = aa00 / det;
-      // Variance lat (deg²) → km² : ×111²
-      // Variance lon (deg²) → km² : ×(111·cos(lat))²
+      const inv00 = lastAA.aa11 / lastDet;
+      const inv11 = lastAA.aa00 / lastDet;
       const sigma_meas_deg = sigma_meas / 60;
       const var_lat_km2 = inv00 * sigma_meas_deg * sigma_meas_deg * 111 * 111;
       const cosLat = Math.cos(lat * DEG);
       const var_lon_km2 = inv11 * sigma_meas_deg * sigma_meas_deg * 111 * 111 * cosLat * cosLat;
-      // Rayon RMS combiné (km)
       const sigma_pos_km = Math.sqrt(var_lat_km2 + var_lon_km2);
+
+      // Garde-fou final : si sigma_pos_km est NaN ou infini, c'est un échec silencieux
+      if (!isFinite(sigma_pos_km) || sigma_pos_km < 0) {
+        return { error: "Incertitude non calculable — visées probablement incohérentes." };
+      }
+      // Un sigma > 500 km signifie que le calcul a convergé sur quelque chose d'inutilisable
+      if (sigma_pos_km > 500) {
+        return { error: "Incertitude trop élevée (" + Math.round(sigma_pos_km) + " km) — visées de qualité insuffisante." };
+      }
 
       const azimuts = sights.map(s => calculatedAltitude(lat, lon, s.GHA, s.dec).Z);
       return { lat, lon, sigma_NM: sigma_residual, sigma_pos_km, iterations: iter+1, azimuts };
     }
   }
-  return { lat, lon, sigma_NM: -1, iterations: maxIter, warning: "non convergé" };
+  return { error: "Le calcul n'a pas convergé après " + maxIter + " itérations. Reprends une visée." };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -889,20 +942,36 @@ function eyePresetLabel(preset, m) {
 function renderSightsList() {
   const list = document.getElementById('sights-list');
   if (state.sights.length === 0) { list.innerHTML = ''; return; }
-  list.innerHTML = '<div class="label-section" style="font-size: 11px; color: var(--text-3); margin: 16px 0 8px; letter-spacing: 0.3px; text-transform: uppercase;">Visées enregistrées</div>' +
-    state.sights.map((s, i) => {
-      const t = s.time.toISOString().substring(11, 19);
-      return `<div class="sight-item">
-        <div class="info">
-          <div class="title">Visée n°${i+1}</div>
-          <div class="sub">${formatHs(s.Hs)} à ${t} UTC</div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="num">Ho ${formatHs(s.Ho)}</span>
-          <span class="del" onclick="removeSight(${i})">×</span>
-        </div>
-      </div>`;
-    }).join('');
+
+  // Vérification : visées trop rapprochées dans le temps
+  // (le soleil bouge ~15°/h en azimut, donc <10 min entre visées = géométrie pauvre)
+  let warnTooClose = false;
+  if (state.sights.length >= 2) {
+    const sorted = [...state.sights].sort((a,b) => a.time - b.time);
+    for (let i = 1; i < sorted.length; i++) {
+      const dtMin = (sorted[i].time - sorted[i-1].time) / 60000;
+      if (dtMin < 10) { warnTooClose = true; break; }
+    }
+  }
+
+  let html = '<div class="label-section" style="font-size: 11px; color: var(--text-3); margin: 16px 0 8px; letter-spacing: 0.3px; text-transform: uppercase;">Visées enregistrées</div>';
+  if (warnTooClose) {
+    html += '<div style="padding: 10px 12px; background: var(--warn-bg); color: var(--warn); border-radius: 8px; font-size: 12px; line-height: 1.5; margin-bottom: 10px;">Tes visées sont rapprochées dans le temps. Pour un calcul fiable, espace-les d\'au moins 10 minutes — le soleil aura changé d\'azimut et la triangulation sera bien plus précise.</div>';
+  }
+  html += state.sights.map((s, i) => {
+    const t = s.time.toISOString().substring(11, 19);
+    return `<div class="sight-item">
+      <div class="info">
+        <div class="title">Visée n°${i+1}</div>
+        <div class="sub">${formatHs(s.Hs)} à ${t} UTC</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="num">Ho ${formatHs(s.Ho)}</span>
+        <span class="del" onclick="removeSight(${i})">×</span>
+      </div>
+    </div>`;
+  }).join('');
+  list.innerHTML = html;
 }
 function formatHs(deg) {
   const d = Math.floor(deg);
@@ -1040,7 +1109,7 @@ function requestPermissionsThenStart() {
         } else {
           showCameraError(
             "Capteurs refusés",
-            "L'app a besoin de l'inclinomètre pour mesurer l'angle du soleil. Tu peux changer cette autorisation en relançant SunFix et en acceptant la demande."
+            "L'app a besoin de l'inclinomètre pour mesurer l'angle du soleil. Tu peux changer cette autorisation en relançant Papousextant et en acceptant la demande."
           );
         }
       })
@@ -1299,27 +1368,42 @@ function formatLon(deg) {
 function updateResultScreen() {
   if (!state.fix) return;
   const f = state.fix;
+
+  // Cas d'erreur : afficher un panneau lisible plutôt que des chiffres absurdes
   if (f.error) {
-    document.getElementById('result-lat').textContent = '—';
-    document.getElementById('result-lon').textContent = f.error;
+    document.getElementById('result-lat').textContent = 'Calcul impossible';
+    document.getElementById('result-lat').style.fontSize = '20px';
+    document.getElementById('result-lon').textContent = '';
+    document.getElementById('result-meta').textContent = '';
     document.getElementById('result-precision').textContent = '—';
-    document.getElementById('result-quality').textContent = '✗';
+    document.getElementById('result-quality').textContent = '—';
+    document.getElementById('result-quality').className = 'v';
+    // Affiche le message dans le tip avec un style alerte
+    const tip = document.getElementById('result-tip');
+    tip.textContent = f.error;
+    tip.style.background = 'var(--warn-bg)';
+    tip.style.color = 'var(--warn)';
+    // Vide la carte
+    clearLeafletMap();
     return;
   }
+
+  // Cas nominal : remettre les styles par défaut au cas où on revient d'un cas erreur
+  document.getElementById('result-lat').style.fontSize = '';
+  document.getElementById('result-tip').style.background = '';
+  document.getElementById('result-tip').style.color = '';
+
   document.getElementById('result-lat').textContent = formatLat(f.lat);
   document.getElementById('result-lon').textContent = formatLon(f.lon);
   const lastTime = state.sights[state.sights.length-1].time.toISOString().substring(11,16);
   document.getElementById('result-meta').textContent =
     `${state.sights.length} visées · ${lastTime} UTC`;
 
-  // Précision : sigma_pos_km combine bruit de mesure et géométrie via la matrice de covariance.
-  // Facteur empirique mesuré (Monte-Carlo, 200 essais) : 1.05 contient 95% des positions vraies
-  // pour des visées à ±1.5' typiques d'un clinomètre smartphone. Légère marge de sécurité (+25%)
-  // pour absorber des conditions un peu pires que les tests : facteur final 1.3.
+  // Précision
   const r95_km = f.sigma_pos_km * 1.3;
   document.getElementById('result-precision').textContent = '± ' + r95_km.toFixed(1) + ' km';
 
-  // Qualité basée sur la dispersion entre azimuts (géométrie) et le sigma résiduel
+  // Qualité
   const azs = f.azimuts;
   let maxDelta = 0;
   for (let i = 0; i < azs.length; i++) {
@@ -1342,46 +1426,129 @@ function updateResultScreen() {
   else tip = 'Géométrie favorable. Une 4ᵉ visée espacée d\'au moins 30 minutes resserrera encore le cercle.';
   document.getElementById('result-tip').textContent = tip;
 
-  drawMap(f, r95_km);
+  drawLeafletMap(f, r95_km, state.estLat, state.estLon);
 }
 
-function drawMap(fix, radius_km) {
-  const svg = document.getElementById('result-map');
-  const cx = 150, cy = 120, R = 80; // cercle d'incertitude affiché à 80 px de rayon
-  const W = 300, H = 240;
-  // L'échelle s'adapte : 1 px ↔ radius_km / 80 km
-  const km_per_px = radius_km / R;
-  // Quadrillage
-  const grid = [];
-  for (let i = 1; i < 4; i++) {
-    grid.push(`<line x1="${i*75}" y1="0" x2="${i*75}" y2="${H}" stroke="rgba(0,0,0,0.06)" stroke-width="0.5"/>`);
-    grid.push(`<line x1="0" y1="${i*60}" x2="${W}" y2="${i*60}" stroke="rgba(0,0,0,0.06)" stroke-width="0.5"/>`);
-  }
-  // Échelle
-  const scale_km = Math.max(1, Math.round(radius_km / 2));
-  const scale_px = scale_km / km_per_px;
+// ─── CARTE LEAFLET ───
+let leafletMap = null;
+let leafletLayers = []; // pour pouvoir effacer entre deux fix
+let leafletRetries = 0;
 
-  svg.innerHTML = `
-    <rect width="${W}" height="${H}" fill="var(--surface-2)"/>
-    ${grid.join('')}
-    <text x="6" y="14" font-size="9" fill="var(--text-3)">${formatLat(fix.lat + km_per_px*120/111)}</text>
-    <text x="6" y="${H-6}" font-size="9" fill="var(--text-3)">${formatLat(fix.lat - km_per_px*120/111)}</text>
-    <circle cx="${cx}" cy="${cy}" r="${R}" fill="rgba(55, 138, 221, 0.12)" stroke="#378ADD" stroke-width="1" stroke-dasharray="4 3"/>
-    <line x1="${cx-12}" y1="${cy}" x2="${cx+12}" y2="${cy}" stroke="#185FA5" stroke-width="0.8"/>
-    <line x1="${cx}" y1="${cy-12}" x2="${cx}" y2="${cy+12}" stroke="#185FA5" stroke-width="0.8"/>
-    <circle cx="${cx}" cy="${cy}" r="6" fill="white" stroke="#185FA5" stroke-width="2"/>
-    <circle cx="${cx}" cy="${cy}" r="2" fill="#185FA5"/>
-    <g transform="translate(${cx + R*0.7}, ${cy - R*0.7 - 12})">
-      <rect x="-2" y="-12" width="64" height="22" rx="3" fill="white" stroke="#185FA5" stroke-width="0.5"/>
-      <text x="30" y="2" font-size="10" font-weight="500" text-anchor="middle" fill="#0C447C">± ${radius_km.toFixed(1)} km</text>
-    </g>
-    <g transform="translate(${W-50}, ${H-20})">
-      <line x1="-${scale_px}" y1="0" x2="0" y2="0" stroke="var(--text-2)" stroke-width="1"/>
-      <line x1="-${scale_px}" y1="-3" x2="-${scale_px}" y2="3" stroke="var(--text-2)" stroke-width="1"/>
-      <line x1="0" y1="-3" x2="0" y2="3" stroke="var(--text-2)" stroke-width="1"/>
-      <text x="${-scale_px/2}" y="-6" font-size="9" text-anchor="middle" fill="var(--text-2)">${scale_km} km</text>
-    </g>
-  `;
+function drawLeafletMap(fix, radius_km, estLat, estLon) {
+  // Vérifie que Leaflet est chargé (chargé en defer dans le head)
+  if (typeof L === 'undefined') {
+    leafletRetries++;
+    if (leafletRetries < 10) {
+      setTimeout(() => drawLeafletMap(fix, radius_km, estLat, estLon), 200);
+      return;
+    }
+    // Après 2s, on abandonne et on affiche un fallback
+    const container = document.getElementById('result-map');
+    if (container) {
+      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:20px;text-align:center;font-size:13px;color:var(--text-2);">Carte indisponible (pas de connexion internet). Position ci-dessus reste valide.</div>';
+    }
+    return;
+  }
+  leafletRetries = 0;
+
+  const container = document.getElementById('result-map');
+  if (!container) return;
+
+  // Initialise la carte (une fois pour toute) ou nettoie les couches précédentes
+  if (!leafletMap) {
+    leafletMap = L.map(container, {
+      zoomControl: true,
+      attributionControl: true,
+    }).setView([fix.lat, fix.lon], 11);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(leafletMap);
+  } else {
+    // Efface les marqueurs/cercles précédents
+    leafletLayers.forEach(l => leafletMap.removeLayer(l));
+    leafletLayers = [];
+    leafletMap.setView([fix.lat, fix.lon], 11);
+    // Force un refresh de la taille (nécessaire si la carte était cachée)
+    setTimeout(() => leafletMap.invalidateSize(), 100);
+  }
+
+  // Cercle d'incertitude (en mètres)
+  const circle = L.circle([fix.lat, fix.lon], {
+    radius: radius_km * 1000,
+    color: '#185FA5',
+    weight: 1.5,
+    fillColor: '#378ADD',
+    fillOpacity: 0.15,
+    dashArray: '4 4',
+  }).addTo(leafletMap);
+  leafletLayers.push(circle);
+
+  // Marqueur position calculée (point principal)
+  const calcIcon = L.divIcon({
+    className: 'calc-marker',
+    html: '<div style="width:14px;height:14px;border-radius:50%;background:white;border:3px solid #185FA5;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+  const marker = L.marker([fix.lat, fix.lon], { icon: calcIcon })
+    .addTo(leafletMap)
+    .bindPopup(`<b>Position calculée</b><br>${formatLat(fix.lat)}<br>${formatLon(fix.lon)}<br>± ${radius_km.toFixed(1)} km`);
+  leafletLayers.push(marker);
+
+  // Marqueur position d'estime (si différente de la position calculée)
+  if (estLat != null && estLon != null) {
+    const dlat_km = (estLat - fix.lat) * 111;
+    const dlon_km = (estLon - fix.lon) * 111 * Math.cos(fix.lat * DEG);
+    const dist_km = Math.sqrt(dlat_km*dlat_km + dlon_km*dlon_km);
+    // On affiche le point d'estime seulement s'il est suffisamment distinct
+    if (dist_km > 0.5) {
+      const estIcon = L.divIcon({
+        className: 'est-marker',
+        html: '<div style="width:10px;height:10px;border-radius:50%;background:transparent;border:2px dashed #888780;"></div>',
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      });
+      const estMarker = L.marker([estLat, estLon], { icon: estIcon })
+        .addTo(leafletMap)
+        .bindPopup(`<b>Point d'estime</b><br>Position de départ<br>${dist_km.toFixed(1)} km de la position calculée`);
+      leafletLayers.push(estMarker);
+
+      // Ligne reliant estime → calculé
+      const polyline = L.polyline(
+        [[estLat, estLon], [fix.lat, fix.lon]],
+        { color: '#888780', weight: 1, dashArray: '3 3', opacity: 0.6 }
+      ).addTo(leafletMap);
+      leafletLayers.push(polyline);
+
+      // Ajuste le zoom pour englober les deux points + le cercle
+      const bounds = L.latLngBounds([
+        [estLat, estLon],
+        [fix.lat + radius_km/111, fix.lon + radius_km/(111*Math.cos(fix.lat*DEG))],
+        [fix.lat - radius_km/111, fix.lon - radius_km/(111*Math.cos(fix.lat*DEG))],
+      ]);
+      leafletMap.fitBounds(bounds, { padding: [20, 20] });
+    } else {
+      // Pas de point d'estime distinct, on cadre juste sur le cercle
+      const bounds = circle.getBounds();
+      leafletMap.fitBounds(bounds, { padding: [20, 20] });
+    }
+  } else {
+    const bounds = circle.getBounds();
+    leafletMap.fitBounds(bounds, { padding: [20, 20] });
+  }
+
+  // Force un refresh après l'ouverture (si l'écran vient d'être affiché)
+  setTimeout(() => { if (leafletMap) leafletMap.invalidateSize(); }, 200);
+}
+
+function clearLeafletMap() {
+  // Nettoie les couches mais conserve la carte de base, pour réinit rapide
+  if (leafletMap) {
+    leafletLayers.forEach(l => leafletMap.removeLayer(l));
+    leafletLayers = [];
+  }
 }
 
 // ─── Écran CORRECTIONS ───
