@@ -259,6 +259,207 @@
   }
 
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+  /* ─── Mode caméra ─── */
+  .camera-screen {
+    position: fixed; inset: 0; background: #000;
+    display: flex; flex-direction: column;
+    z-index: 50;
+    color: white;
+  }
+  .camera-screen.hidden { display: none; }
+  .camera-screen video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    background: #000;
+  }
+  .camera-overlay {
+    position: relative; z-index: 2;
+    flex: 1;
+    display: flex; flex-direction: column;
+    pointer-events: none;
+  }
+  .camera-overlay > * { pointer-events: auto; }
+  .camera-top {
+    padding: 16px 20px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .camera-top .close-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(0,0,0,0.5); border: 0.5px solid rgba(255,255,255,0.2);
+    color: white; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .camera-top .info {
+    text-align: center; flex: 1;
+  }
+  .camera-top .info .step {
+    font-size: 11px; opacity: 0.7; letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .camera-top .info .v {
+    font-size: 16px; font-weight: 500; margin-top: 2px; font-variant-numeric: tabular-nums;
+  }
+  .camera-top .placeholder { width: 36px; }
+
+  /* Viseur central */
+  .reticle {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 120px; height: 120px;
+    pointer-events: none;
+  }
+  .reticle .ring {
+    position: absolute; inset: 0;
+    border: 1px solid rgba(255,255,255,0.6);
+    border-radius: 50%;
+  }
+  .reticle .ring-inner {
+    position: absolute; inset: 35%;
+    border: 1px solid rgba(255,255,255,0.8);
+    border-radius: 50%;
+  }
+  .reticle .crosshair-h, .reticle .crosshair-v {
+    position: absolute;
+    background: rgba(255,255,255,0.8);
+  }
+  .reticle .crosshair-h {
+    left: -10px; right: -10px; top: 50%; height: 1px; transform: translateY(-50%);
+  }
+  .reticle .crosshair-v {
+    top: -10px; bottom: -10px; left: 50%; width: 1px; transform: translateX(-50%);
+  }
+
+  /* Indicateur de niveau (bulle horizontale) */
+  .level-indicator {
+    position: absolute;
+    bottom: 180px; left: 50%; transform: translateX(-50%);
+    width: 160px; height: 4px;
+    background: rgba(255,255,255,0.2); border-radius: 2px;
+  }
+  .level-indicator .bubble {
+    position: absolute; top: -3px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #fff;
+    transform: translateX(-50%);
+    transition: left 0.1s linear;
+  }
+  .level-indicator .center-mark {
+    position: absolute; left: 50%; top: -4px; bottom: -4px;
+    width: 1px; background: rgba(255,255,255,0.5);
+    transform: translateX(-50%);
+  }
+
+  /* Lecture angle live */
+  .live-angle {
+    position: absolute;
+    bottom: 220px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    padding: 8px 16px; border-radius: 12px;
+    border: 0.5px solid rgba(255,255,255,0.15);
+    text-align: center;
+  }
+  .live-angle .lbl {
+    font-size: 10px; opacity: 0.75; letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .live-angle .v {
+    font-size: 30px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1.1;
+    letter-spacing: -0.5px;
+  }
+  .live-angle .v .unit {
+    font-size: 16px; opacity: 0.7;
+  }
+  .live-angle.unstable .v { color: #FAC775; }
+  .live-angle.stable .v { color: #97C459; }
+
+  /* Zone bouton capture */
+  .camera-bottom {
+    background: linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0));
+    padding: 24px 20px 32px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 24px;
+  }
+  .capture-btn {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    border: 3px solid rgba(255,255,255,0.9);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s;
+  }
+  .capture-btn:active { transform: scale(0.92); }
+  .capture-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .capture-btn .inner {
+    width: 56px; height: 56px; border-radius: 50%; background: white;
+  }
+  .side-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(0,0,0,0.5); border: 0.5px solid rgba(255,255,255,0.2);
+    color: white; font-size: 12px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .side-btn:active { transform: scale(0.94); }
+
+  .camera-status {
+    position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    padding: 8px 14px; border-radius: 8px;
+    border: 0.5px solid rgba(255,255,255,0.15);
+    font-size: 12px; opacity: 0.9;
+  }
+
+  .camera-error {
+    position: absolute; inset: 0; background: #1a1a18;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; text-align: center; color: white;
+  }
+  .camera-error h3 { margin: 0 0 12px; font-size: 18px; font-weight: 500; }
+  .camera-error p { font-size: 14px; opacity: 0.75; line-height: 1.6; max-width: 320px; margin: 0 0 20px; }
+
+  /* Avertissement sécurité solaire */
+  .safety-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .safety-modal.hidden { display: none; }
+  .safety-card {
+    background: var(--surface); color: var(--text);
+    border-radius: 16px; padding: 28px 24px;
+    max-width: 380px; width: 100%;
+  }
+  .safety-card .icon {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--warn-bg);
+    margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .safety-card .icon svg { width: 28px; height: 28px; }
+  .safety-card h3 {
+    margin: 0 0 12px; font-size: 18px; font-weight: 500; text-align: center;
+  }
+  .safety-card p {
+    font-size: 14px; line-height: 1.6; color: var(--text-2); margin: 0 0 12px;
+  }
+  .safety-card .key {
+    background: var(--warn-bg); color: var(--warn);
+    padding: 12px 14px; border-radius: 10px; font-size: 13px;
+    margin: 16px 0; line-height: 1.5;
+  }
+  .safety-card label {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; color: var(--text-2);
+    margin: 16px 0 8px; cursor: pointer;
+  }
+  .safety-card input[type="checkbox"] {
+    width: 18px; height: 18px; cursor: pointer;
+    accent-color: var(--accent);
+  }
 </style>
 </head>
 <body>
@@ -297,37 +498,35 @@
     </div>
   </div>
 
-  <!-- ─── ÉCRAN VISÉE ─── -->
+  <!-- ─── ÉCRAN VISÉE (dashboard de session) ─── -->
   <div id="screen-sight" class="screen hidden">
     <div class="header" style="margin: -24px -20px 0; padding: 16px 20px;">
       <button class="icon-btn" onclick="goTo('intro')" aria-label="Retour">←</button>
       <div style="text-align: center;">
-        <div class="step">Nouvelle visée</div>
-        <h1>Hauteur du soleil</h1>
+        <div class="step">Session de mesure</div>
+        <h1>Visées du soleil</h1>
       </div>
       <button class="icon-btn" onclick="openParams()" aria-label="Paramètres">⚙</button>
     </div>
 
-    <div class="display" style="margin-top: 32px;">
-      <div class="big" id="alt-display">42<span class="unit">°</span><span id="alt-min">18'</span></div>
-      <div class="label">Hauteur observée — bord <span id="limb-display">inférieur</span></div>
-    </div>
-
-    <div class="slider-row">
-      <input type="range" id="alt-deg" min="0" max="89" value="42" step="1" aria-label="Degrés">
-      <div class="slider-bounds"><span>0°</span><span>89°</span></div>
-    </div>
-    <div class="slider-row" style="margin-top: 8px;">
-      <input type="range" id="alt-min-slider" min="0" max="59" value="18" step="1" aria-label="Minutes d'arc">
-      <div class="slider-bounds"><span>0'</span><span>59'</span></div>
-    </div>
-
-    <div class="time-display" style="margin-top: 20px;">
-      <div class="lbl">Heure UTC de la visée</div>
+    <div class="time-display" style="margin-top: 24px;">
+      <div class="lbl">Heure UTC actuelle</div>
       <div class="v" id="time-display">--:--:--</div>
     </div>
 
-    <div class="params">
+    <div style="margin-top: 24px; text-align: center;">
+      <p style="font-size: 14px; color: var(--text-2); line-height: 1.6; margin: 0 0 16px;">
+        Pointe le téléphone vers le soleil, centre-le dans le viseur, capture la mesure.
+      </p>
+      <button class="primary" onclick="openCamera()" style="margin-top: 0;">
+        <span style="display: inline-flex; align-items: center; gap: 8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Nouvelle visée
+        </span>
+      </button>
+    </div>
+
+    <div class="params" style="margin-top: 28px;">
       <div class="label-section">Paramètres de mesure</div>
       <div class="row" onclick="openModal('eye')">
         <div class="info">
@@ -361,12 +560,12 @@
       </div>
     </div>
 
-    <button class="primary" onclick="captureSight()">Enregistrer cette visée</button>
-
     <div id="sights-list" class="sights-list"></div>
 
     <button id="compute-btn" class="secondary" onclick="computeFix()" disabled style="margin-top: 16px;">Calculer la position (0 visée)</button>
   </div>
+
+  <!-- ─── ÉCRAN CAMÉRA (plein écran, hors flux .app) ─── -->
 
   <!-- ─── ÉCRAN CALIBRATION ─── -->
   <div id="screen-calibration" class="screen hidden">
@@ -445,6 +644,69 @@
     </div>
   </div>
 
+</div>
+
+<!-- ─── MODALE SÉCURITÉ SOLAIRE (premier lancement caméra) ─── -->
+<div id="safety-modal" class="safety-modal hidden">
+  <div class="safety-card">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#BA7517" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    </div>
+    <h3>Sécurité oculaire</h3>
+    <p>SunFix utilise la caméra de ton téléphone pour pointer le soleil. Avant de continuer, lis attentivement.</p>
+    <div class="key">
+      <strong>Ne regarde JAMAIS le soleil directement à l'œil nu.</strong> Ne le regarde pas non plus à travers un viseur optique. Pour aligner le téléphone, ne regarde QUE l'écran — jamais le soleil derrière le téléphone.
+    </div>
+    <p style="font-size: 13px;">Pointer brièvement la caméra vers le soleil pour une mesure ne l'endommage pas. Évite les expositions prolongées (>30 secondes) qui peuvent saturer le capteur.</p>
+    <label>
+      <input type="checkbox" id="safety-ack">
+      J'ai compris et j'accepte ces consignes
+    </label>
+    <button class="primary" id="safety-continue" onclick="acceptSafety()" disabled>Continuer</button>
+    <button class="secondary" onclick="closeSafety()" style="margin-top: 8px;">Annuler</button>
+  </div>
+</div>
+
+<!-- ─── ÉCRAN CAMÉRA ─── -->
+<div id="camera-screen" class="camera-screen hidden">
+  <video id="camera-video" autoplay playsinline muted></video>
+  <div class="camera-overlay">
+    <div class="camera-top">
+      <button class="close-btn" onclick="closeCamera()" aria-label="Fermer">×</button>
+      <div class="info">
+        <div class="step">Heure UTC</div>
+        <div class="v" id="camera-time">--:--:--</div>
+      </div>
+      <div class="placeholder"></div>
+    </div>
+    <div id="camera-status" class="camera-status hidden">Initialisation…</div>
+    <div class="reticle" id="reticle">
+      <div class="ring"></div>
+      <div class="ring-inner"></div>
+      <div class="crosshair-h"></div>
+      <div class="crosshair-v"></div>
+    </div>
+    <div class="live-angle" id="live-angle">
+      <div class="lbl">Angle d'inclinaison</div>
+      <div class="v"><span id="live-angle-v">--</span><span class="unit">°</span></div>
+    </div>
+    <div class="level-indicator">
+      <div class="center-mark"></div>
+      <div class="bubble" id="level-bubble" style="left: 50%;"></div>
+    </div>
+    <div class="camera-bottom">
+      <div style="width: 44px;"></div>
+      <button class="capture-btn" id="capture-btn" onclick="captureSightFromCamera()" aria-label="Capturer la visée">
+        <div class="inner"></div>
+      </button>
+      <div style="width: 44px;"></div>
+    </div>
+  </div>
+  <div id="camera-error" class="camera-error hidden">
+    <h3 id="camera-error-title">Caméra indisponible</h3>
+    <p id="camera-error-msg">—</p>
+    <button class="primary" onclick="closeCamera()" style="max-width: 240px;">Retour</button>
+  </div>
 </div>
 
 <!-- ─── MODALE PARAMÈTRES ─── -->
@@ -605,19 +867,11 @@ function goTo(name) {
   window.scrollTo(0, 0);
 }
 
-// ─── Écran VISÉE ───
-function updateAltDisplay() {
-  document.getElementById('alt-display').firstChild.nodeValue = state.altDeg;
-  document.getElementById('alt-min').textContent = String(state.altMin).padStart(2,'0') + "'";
-}
+// ─── Écran VISÉE (dashboard) ───
 function updateSightScreen() {
-  document.getElementById('alt-deg').value = state.altDeg;
-  document.getElementById('alt-min-slider').value = state.altMin;
-  updateAltDisplay();
   document.getElementById('eye-val').textContent = state.eye_m + ' m';
   document.getElementById('eye-sub').textContent = eyePresetLabel(state.eyePreset, state.eye_m);
   document.getElementById('limb-val').textContent = state.limb === 'lower' ? 'Inférieur' : (state.limb === 'upper' ? 'Supérieur' : 'Centre');
-  document.getElementById('limb-display').textContent = state.limb === 'lower' ? 'inférieur' : (state.limb === 'upper' ? 'supérieur' : 'centre');
   const sign = state.IC_min >= 0 ? '+' : '';
   document.getElementById('ic-val').textContent = sign + state.IC_min + "'";
   renderSightsList();
@@ -663,8 +917,26 @@ function removeSight(i) {
   renderSightsList();
   updateComputeBtn();
 }
-function captureSight() {
-  const Hs = state.altDeg + state.altMin / 60;
+function captureSight(Hs_input) {
+  // Détermine la valeur de Hs.
+  // - Si l'argument est passé (arguments.length > 0), il DOIT être valide.
+  //   Une valeur invalide (NaN, hors bornes) est refusée — pas de fallback silencieux.
+  // - Si aucun argument, on prend les valeurs en state (compat).
+  let Hs;
+  if (arguments.length > 0) {
+    if (typeof Hs_input !== 'number' || !isFinite(Hs_input)) {
+      console.warn('captureSight: argument invalide', Hs_input);
+      return false;
+    }
+    Hs = Hs_input;
+  } else {
+    Hs = state.altDeg + state.altMin / 60;
+  }
+  // Garde-fou bornes physiques : Hs doit être dans [0, 90]
+  if (Hs < 0 || Hs > 90) {
+    console.warn('captureSight: Hs hors bornes', Hs);
+    return false;
+  }
   const time = new Date(); // heure UTC de la visée
   const c = correctAltitude(Hs, state.IC_min, state.eye_m, state.limb);
   const sun = sunPosition(time);
@@ -675,6 +947,239 @@ function captureSight() {
   });
   renderSightsList();
   updateComputeBtn();
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODE CAMÉRA — viseur soleil + inclinomètre
+// ═══════════════════════════════════════════════════════════════
+
+const camera = {
+  stream: null,         // MediaStream actif
+  orientHandler: null,  // listener deviceorientation
+  currentBeta: null,    // dernière valeur d'inclinaison (en degrés, 0 = horizontal, 90 = vertical)
+  betaHistory: [],      // historique court pour évaluer la stabilité
+  active: false,
+};
+
+const SAFETY_KEY = 'sunfix_safety_ack_v1';
+
+function safetyAcked() {
+  try { return localStorage.getItem(SAFETY_KEY) === 'true'; }
+  catch (e) { return false; } // localStorage peut être bloqué (mode privé)
+}
+function setSafetyAcked() {
+  try { localStorage.setItem(SAFETY_KEY, 'true'); } catch (e) {}
+}
+
+// Ouvre l'écran caméra. Affiche d'abord la modale sécurité si pas encore acquittée.
+function openCamera() {
+  if (!safetyAcked()) {
+    document.getElementById('safety-modal').classList.remove('hidden');
+    document.getElementById('safety-ack').checked = false;
+    document.getElementById('safety-continue').disabled = true;
+    return;
+  }
+  startCameraFlow();
+}
+
+function acceptSafety() {
+  if (!document.getElementById('safety-ack').checked) return;
+  setSafetyAcked();
+  document.getElementById('safety-modal').classList.add('hidden');
+  startCameraFlow();
+}
+function closeSafety() {
+  document.getElementById('safety-modal').classList.add('hidden');
+}
+
+async function startCameraFlow() {
+  const screen = document.getElementById('camera-screen');
+  screen.classList.remove('hidden');
+  document.getElementById('camera-error').classList.add('hidden');
+  showCameraStatus("Initialisation…");
+  camera.active = true;
+
+  // 1. Demander permission DeviceOrientation (iOS 13+ exige requestPermission)
+  let orientGranted = true;
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const result = await DeviceOrientationEvent.requestPermission();
+      orientGranted = (result === 'granted');
+    } catch (e) {
+      orientGranted = false;
+    }
+  }
+
+  if (!orientGranted) {
+    showCameraError(
+      "Capteurs non autorisés",
+      "L'app a besoin d'accéder à l'inclinomètre pour mesurer l'angle. Autorise les capteurs dans les réglages de ton navigateur, ou utilise un autre appareil."
+    );
+    return;
+  }
+
+  // 2. Démarrer le flux caméra (caméra arrière idéalement)
+  try {
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' }, // caméra arrière
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    };
+    camera.stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const video = document.getElementById('camera-video');
+    video.srcObject = camera.stream;
+  } catch (e) {
+    let msg = "Impossible d'accéder à la caméra.";
+    if (e.name === 'NotAllowedError') msg = "L'accès caméra a été refusé. Autorise-le dans les réglages du navigateur.";
+    else if (e.name === 'NotFoundError') msg = "Aucune caméra détectée sur cet appareil.";
+    else if (e.name === 'NotReadableError') msg = "La caméra est utilisée par une autre application.";
+    showCameraError("Caméra indisponible", msg);
+    return;
+  }
+
+  // 3. Démarrer l'écoute de l'inclinomètre
+  startOrientationListener();
+  hideCameraStatus();
+}
+
+function startOrientationListener() {
+  if (typeof window.DeviceOrientationEvent === 'undefined') {
+    showCameraStatus("Inclinomètre non disponible — angle non mesurable");
+    return;
+  }
+  camera.orientHandler = function(ev) {
+    // beta = inclinaison avant/arrière en degrés
+    // Quand le téléphone est à plat (écran vers le ciel), beta = 0
+    // Quand il est à la verticale (vers l'horizon en mode portrait), beta ≈ 90
+    // Quand on l'incline plus haut pour viser un objet en hauteur, beta peut dépasser 90
+    let beta = ev.beta;
+    if (beta == null || isNaN(beta)) return;
+    // Conversion : on veut l'angle au-dessus de l'horizon.
+    // En portrait, viser horizontalement → beta ≈ 90 → angle d'élévation = 0
+    // Viser au zénith (vers le haut) → beta ≈ 180 (ou 0 selon orientation) → élévation = 90
+    // On utilise : angle = beta - 90 (clampé)
+    let angle = beta - 90;
+    if (angle < -10 || angle > 100) return; // valeurs aberrantes ignorées
+    angle = Math.max(0, Math.min(90, angle));
+    camera.currentBeta = angle;
+    updateLiveAngle(angle, ev.gamma);
+  };
+  window.addEventListener('deviceorientation', camera.orientHandler, true);
+
+  // Sécurité : si après 2 secondes aucune valeur n'est arrivée, on prévient
+  setTimeout(() => {
+    if (camera.active && camera.currentBeta === null) {
+      showCameraStatus("En attente des capteurs… bouge légèrement le téléphone");
+    }
+  }, 2000);
+}
+
+function updateLiveAngle(angle, gamma) {
+  const v = document.getElementById('live-angle-v');
+  const live = document.getElementById('live-angle');
+  if (!v || !live) return;
+  v.textContent = angle.toFixed(1);
+
+  // Mesure de stabilité : on calcule l'écart-type sur les 10 dernières valeurs
+  camera.betaHistory.push(angle);
+  if (camera.betaHistory.length > 10) camera.betaHistory.shift();
+  if (camera.betaHistory.length >= 5) {
+    const mean = camera.betaHistory.reduce((a,b)=>a+b, 0) / camera.betaHistory.length;
+    const variance = camera.betaHistory.reduce((a,b) => a + (b-mean)*(b-mean), 0) / camera.betaHistory.length;
+    const stdev = Math.sqrt(variance);
+    live.classList.toggle('stable', stdev < 0.5);
+    live.classList.toggle('unstable', stdev >= 0.5 && stdev < 2);
+  }
+
+  // Niveau (bulle) : gamma indique l'inclinaison gauche-droite. On veut ~0 pour une visée propre.
+  const bubble = document.getElementById('level-bubble');
+  if (bubble && gamma != null) {
+    // gamma typiquement entre -90 et 90. On clamp à ±20° et on mappe sur 0..100%
+    const g = Math.max(-20, Math.min(20, gamma));
+    const pct = 50 + (g / 20) * 45; // 50% au centre, ±45% aux bords
+    bubble.style.left = pct + '%';
+  }
+}
+
+function captureSightFromCamera() {
+  if (camera.currentBeta === null) {
+    showCameraStatus("Pas encore de mesure d'angle — incline le téléphone");
+    return;
+  }
+  // Vérifier la stabilité avant de capturer
+  if (camera.betaHistory.length >= 5) {
+    const mean = camera.betaHistory.reduce((a,b)=>a+b, 0) / camera.betaHistory.length;
+    const variance = camera.betaHistory.reduce((a,b) => a + (b-mean)*(b-mean), 0) / camera.betaHistory.length;
+    const stdev = Math.sqrt(variance);
+    if (stdev > 3) {
+      showCameraStatus("Téléphone instable — stabilise puis recapture");
+      return;
+    }
+  }
+  const Hs = camera.currentBeta;
+  const ok = captureSight(Hs);
+  if (ok) {
+    // Feedback visuel : flash bref
+    flashCapture();
+    // Ferme la caméra après une petite latence
+    setTimeout(() => closeCamera(), 600);
+  }
+}
+
+function flashCapture() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:absolute;inset:0;background:white;opacity:0.7;z-index:10;pointer-events:none;transition:opacity 0.4s;';
+  document.getElementById('camera-screen').appendChild(overlay);
+  requestAnimationFrame(() => { overlay.style.opacity = '0'; });
+  setTimeout(() => overlay.remove(), 500);
+}
+
+function closeCamera() {
+  camera.active = false;
+  // Stop stream
+  if (camera.stream) {
+    camera.stream.getTracks().forEach(t => t.stop());
+    camera.stream = null;
+  }
+  const video = document.getElementById('camera-video');
+  if (video) video.srcObject = null;
+  // Stop listener
+  if (camera.orientHandler) {
+    window.removeEventListener('deviceorientation', camera.orientHandler, true);
+    camera.orientHandler = null;
+  }
+  camera.currentBeta = null;
+  camera.betaHistory = [];
+  // Hide screen
+  document.getElementById('camera-screen').classList.add('hidden');
+  document.getElementById('camera-error').classList.add('hidden');
+  // Refresh dashboard
+  updateSightScreen();
+}
+
+function showCameraStatus(msg) {
+  const el = document.getElementById('camera-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  // Auto-hide après 3s
+  clearTimeout(showCameraStatus._t);
+  showCameraStatus._t = setTimeout(() => el.classList.add('hidden'), 3000);
+}
+function hideCameraStatus() {
+  const el = document.getElementById('camera-status');
+  if (el) el.classList.add('hidden');
+}
+function showCameraError(title, msg) {
+  document.getElementById('camera-error-title').textContent = title;
+  document.getElementById('camera-error-msg').textContent = msg;
+  document.getElementById('camera-error').classList.remove('hidden');
+  hideCameraStatus();
 }
 
 function computeFix() {
@@ -912,24 +1417,25 @@ function resetAll() {
 }
 
 // ─── ÉVÉNEMENTS ───
-document.getElementById('alt-deg').addEventListener('input', e => {
-  state.altDeg = parseInt(e.target.value);
-  updateAltDisplay();
-});
-document.getElementById('alt-min-slider').addEventListener('input', e => {
-  state.altMin = parseInt(e.target.value);
-  updateAltDisplay();
-});
 document.getElementById('ic-slider').addEventListener('input', e => {
   state.IC_min = parseInt(e.target.value);
   const sign = state.IC_min >= 0 ? '+' : '';
   document.getElementById('ic-display').firstChild.nodeValue = sign + state.IC_min;
 });
 
-// Horloge UTC
+// Activation conditionnelle du bouton Continuer dans la modale sécurité
+document.getElementById('safety-ack').addEventListener('change', e => {
+  document.getElementById('safety-continue').disabled = !e.target.checked;
+});
+
+// Horloge UTC — met à jour à la fois l'écran dashboard et l'écran caméra
 function updateClock() {
   const t = new Date();
-  document.getElementById('time-display').textContent = t.toISOString().substring(11, 19);
+  const utc = t.toISOString().substring(11, 19);
+  const tDisplay = document.getElementById('time-display');
+  if (tDisplay) tDisplay.textContent = utc;
+  const cTime = document.getElementById('camera-time');
+  if (cTime) cTime.textContent = utc;
 }
 setInterval(updateClock, 1000);
 updateClock();
