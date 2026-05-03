@@ -984,77 +984,117 @@ function openCamera() {
     document.getElementById('safety-continue').disabled = true;
     return;
   }
-  startCameraFlow();
+  // Sécurité déjà acquittée : on lance directement le flux qui demande les permissions
+  // dans le contexte du geste utilisateur (le clic sur 'Nouvelle visée')
+  requestPermissionsThenStart();
 }
 
 function acceptSafety() {
   if (!document.getElementById('safety-ack').checked) return;
   setSafetyAcked();
   document.getElementById('safety-modal').classList.add('hidden');
-  startCameraFlow();
+  // Cet appel est lui aussi dans un onClick synchrone — on enchaîne immédiatement
+  requestPermissionsThenStart();
 }
 function closeSafety() {
   document.getElementById('safety-modal').classList.add('hidden');
 }
 
-async function startCameraFlow() {
-  const screen = document.getElementById('camera-screen');
-  screen.classList.remove('hidden');
+// CRITIQUE : iOS Safari exige que DeviceOrientationEvent.requestPermission()
+// soit appelé directement depuis un user gesture (onclick), AVANT tout 'await'.
+// Si on a déjà awaité autre chose (ex. getUserMedia), le user gesture est consommé
+// et la promesse échoue silencieusement.
+// Donc l'ordre est :
+//   1. Demander DeviceOrientation (sync, sous geste)
+//   2. Une fois la promesse résolue, demander getUserMedia (async)
+function requestPermissionsThenStart() {
+  // Affiche immédiatement l'écran caméra (fond noir) pour le feedback visuel
+  document.getElementById('camera-screen').classList.remove('hidden');
   document.getElementById('camera-error').classList.add('hidden');
   camera.errored = false;
   camera.active = true;
-  showCameraStatus("Initialisation…");
+  showCameraStatus("Demande des permissions…");
 
-  // Vérification HTTPS (caméra et capteurs nécessitent un contexte sécurisé)
+  // Vérification HTTPS d'abord (sinon rien ne marche)
   if (!window.isSecureContext) {
     showCameraError(
-      "Contexte non sécurisé",
-      "L'app doit être servie en HTTPS pour accéder à la caméra et aux capteurs. Ouvre l'URL en https:// ou utilise localhost."
+      "Connexion non sécurisée",
+      "L'app doit être ouverte en HTTPS pour accéder à la caméra et aux capteurs. Vérifie l'URL dans la barre d'adresse."
     );
     return;
   }
 
-  // Vérification de la disponibilité de getUserMedia
+  // Si l'API DeviceOrientation requestPermission existe (iOS 13+), on doit l'appeler
+  // SYNCHRONEMENT depuis le user gesture. Sinon (Android/desktop) on n'a pas besoin.
+  const needsOrientPermission = (typeof DeviceOrientationEvent !== 'undefined' &&
+    typeof DeviceOrientationEvent.requestPermission === 'function');
+
+  if (needsOrientPermission) {
+    // ATTENTION : pas de await avant cet appel. On utilise .then() pour rester
+    // dans le contexte du geste utilisateur le plus longtemps possible.
+    DeviceOrientationEvent.requestPermission()
+      .then(state => {
+        if (state === 'granted') {
+          // Permission capteurs OK → maintenant on peut faire l'async caméra
+          startCameraStream();
+        } else {
+          showCameraError(
+            "Capteurs refusés",
+            "L'app a besoin de l'inclinomètre pour mesurer l'angle du soleil. Tu peux changer cette autorisation en relançant SunFix et en acceptant la demande."
+          );
+        }
+      })
+      .catch(err => {
+        // Sur iOS, cette erreur arrive si requestPermission a été appelé hors d'un geste utilisateur
+        showCameraError(
+          "Permission capteurs impossible",
+          "Le navigateur n'a pas pu demander la permission. Reviens à l'écran précédent et touche à nouveau le bouton 'Nouvelle visée'."
+        );
+      });
+  } else {
+    // Pas de permission à demander — on lance directement la caméra
+    startCameraStream();
+  }
+}
+
+async function startCameraStream() {
+  // Les capteurs sont autorisés (ou inutiles) : démarrer la caméra et l'écoute orientation.
+  showCameraStatus("Activation de la caméra…");
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showCameraError(
       "Caméra non supportée",
-      "Ton navigateur ne permet pas l'accès à la caméra. Essaie avec Safari (iPhone) ou Chrome (Android) à jour."
+      "Ton navigateur ne permet pas l'accès à la caméra. Essaie avec Safari à jour ou Chrome."
     );
     return;
   }
 
-  // 1. Démarrer le flux caméra EN PREMIER
-  // (sur iOS, le premier appel async qui demande une permission consomme le geste utilisateur,
-  // donc on commence par la caméra qui est l'essentiel visuel)
   try {
     const constraints = {
       video: {
-        facingMode: { ideal: 'environment' }, // caméra arrière
+        facingMode: { ideal: 'environment' },
         width: { ideal: 1920 },
         height: { ideal: 1080 }
       },
       audio: false
     };
     camera.stream = await navigator.mediaDevices.getUserMedia(constraints);
-    const video = document.getElementById('camera-video');
-    video.srcObject = camera.stream;
+    document.getElementById('camera-video').srcObject = camera.stream;
   } catch (e) {
     let msg = "Impossible d'accéder à la caméra.";
     if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-      msg = "L'accès caméra a été refusé. Va dans les réglages Safari (ou Chrome) → Caméra, et autorise SunFix. Recharge ensuite la page.";
+      msg = "L'accès caméra a été refusé. Touche le bouton 'aA' dans la barre d'adresse Safari, puis Réglages du site, et autorise la caméra.";
     } else if (e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError') {
       msg = "Aucune caméra détectée sur cet appareil.";
     } else if (e.name === 'NotReadableError' || e.name === 'TrackStartError') {
       msg = "La caméra est utilisée par une autre application. Ferme-la et réessaie.";
     } else if (e.name === 'OverconstrainedError') {
-      // Réessayer avec des contraintes minimales
+      // Réessayer avec contraintes minimales
       try {
         camera.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         document.getElementById('camera-video').srcObject = camera.stream;
-        // Si on arrive ici, c'est OK, on poursuit (pas de return)
       } catch (e2) {
-        msg = "Configuration caméra non supportée (" + (e2.message || e.name) + ").";
-        showCameraError("Caméra indisponible", msg);
+        showCameraError("Caméra indisponible", "Configuration non supportée.");
         return;
       }
     } else {
@@ -1066,31 +1106,14 @@ async function startCameraFlow() {
     }
   }
 
-  // 2. Demander permission DeviceOrientation (iOS 13+ exige requestPermission)
-  let orientGranted = true;
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const result = await DeviceOrientationEvent.requestPermission();
-      orientGranted = (result === 'granted');
-    } catch (e) {
-      // Sur iOS, requestPermission doit être appelé depuis un geste utilisateur direct.
-      // Si on arrive ici après getUserMedia, le geste peut être "consommé" sur certaines versions.
-      orientGranted = false;
-    }
-  }
-
-  if (!orientGranted) {
-    showCameraError(
-      "Capteurs non autorisés",
-      "L'app a besoin de l'inclinomètre du téléphone pour mesurer l'angle du soleil. Sur iOS, va dans Réglages → Safari → Mouvement et orientation → Activer, puis recharge la page."
-    );
-    return;
-  }
-
-  // 3. Démarrer l'écoute de l'inclinomètre
+  // Tout est OK : démarrer l'écoute des capteurs
   startOrientationListener();
   hideCameraStatus();
+}
+
+// L'ancien startCameraFlow est conservé pour compat mais redirige
+async function startCameraFlow() {
+  return requestPermissionsThenStart();
 }
 
 function startOrientationListener() {
